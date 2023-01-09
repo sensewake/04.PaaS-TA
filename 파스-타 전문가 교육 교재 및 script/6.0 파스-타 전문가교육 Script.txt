@@ -1,0 +1,221 @@
+
+
+=================================================================================================================
+개발환경
+=================================================================================================================
+VMware Player 설치
+https://www.vmware.com/kr/products/workstation-player/workstation-player-evaluation.html
+여기에서 16.0. 버전을 다운로드 및 설치함
+
+ubuntu 설치
+https://releases.ubuntu.com/18.04/
+
+SSH Server 설치
+terminal =>
+sudo apt install openssh-server
+sudo apt update
+sudo apt upgrade
+
+ip 확인 
+ip a
+
+
+mobaxterm접속
+=================================================================================================================
+Bosh VM 배포
+=================================================================================================================
+PaaS-TA 설치 파일 다운로드
+sudo apt install curl
+curl -Lo workspace.zip https://nextcloud.paas-ta.org/index.php/s/RHnbWK6ki2MzePf/download
+unzip workspace.zip -d ./workspace
+cd workspace
+
+종속성 파일 (bosh depledency) 설치
+
+sudo apt-get update
+sudo apt-get install -y build-essential zlibc zlib1g-dev ruby ruby-dev openssl libxslt1-dev libxml2-dev libssl-dev libreadline7 libreadline-dev libyaml-dev libsqlite3-dev sqlite3 
+
+Bosh 설치
+
+sudo apt install curl
+curl -Lo ./bosh https://github.com/cloudfoundry/bosh-cli/releases/download/v6.4.7/bosh-cli-6.4.7-linux-amd64
+chmod +x ./bosh
+sudo mv ./bosh /usr/local/bin/bosh
+bosh -v 
+
+VirtualBox 6.0 설치
+
+sudo apt upgrade 
+wget -q https://www.virtualbox.org/download/oracle_vbox_2016.asc -O- | sudo apt-key add -
+wget -q https://www.virtualbox.org/download/oracle_vbox.asc -O- | sudo apt-key add -
+sudo add-apt-repository "deb http://download.virtualbox.org/virtualbox/debian bionic contrib" 
+sudo apt update
+sudo apt install virtualbox-6.0
+VBoxManage --version 
+
+
+
+Deploy Bosh VM
+cd ~/workspace/paasta-deployment/bosh/
+chmod 755 *.sh
+./deploy-bosh-lite.sh
+
+
+credhub cli 설치
+wget https://github.com/cloudfoundry-incubator/credhub-cli/releases/download/2.9.0/credhub-linux-2.9.0.tgz
+tar -xvf credhub-linux-2.9.0.tgz
+chmod +x credhub 
+sudo mv credhub /usr/local/bin/credhub 
+credhub --version
+
+Bosh login 쉘 스크립트 생성
+./create-bosh-login.sh
+
+Bosh login 쉘 적용
+source ~/.env/micro-bosh-login-env
+
+Bosh login 확인
+bosh -e micro-bosh env
+
+jumpbox key 생성 (Bosh VM 로그인 용) 
+bosh int bosh-lite/creds.yml --path /jumpbox_ssh/private_key > jumpbox.key 
+chmod 600 jumpbox.key
+ssh jumpbox@10.0.1.6 -i jumpbox.key
+
+Bosh로 배포된 프로그램 process 확인 (bosh vm or paas-ta vm ssh 접속 후 이용)
+sudo su
+monit summary 
+
+vbox 환경저장
+vboxmanage controlvm $(bosh int bosh-lite/state.json --path /current_vm_cid) savestate
+ 
+=================================================================================================================
+PaaS-TA 배포
+=================================================================================================================
+ 
+Virtual Box vm 복구
+vboxmanage startvm $(bosh int bosh-lite/state.json --path /current_vm_cid) --type headless
+
+Bosh login
+source ~/.env/micro-bosh-login-env
+
+update cloud config
+cd ~/workspace/paasta-deployment/cloud-config
+cat bosh-lite-cloud-config.yml
+bosh -e micro-bosh update-cloud-config bosh-lite-cloud-config.yml
+
+runtime config 등록
+cd ~/workspace/paasta-deployment/bosh
+source update-runtime-config.sh
+bosh -e micro-bosh runtime-config
+
+stemcell 등록
+cd ~/workspace/paasta-deployment/bosh
+source upload-stemcell.sh
+bosh -e micro-bosh stemcells
+
+PaaS-TA AP 설치 Variable File
+common_vars 수정
+vi ~/workspace/common/common_vars.yml
+
+/paasta/vars.yml 수정 
+vi ~/workspace/paasta-deployment/paasta/vars.yml
+
+
+PaaS-TA 배포
+cd ~/workspace/paasta-deployment/paasta
+chmod +x ./*.sh
+vi deploy-bosh-lite.sh
+./deploy-bosh-lite.sh
+
+IP route 설정 (bosh-lite를 이용할때)
+sudo ip route add   10.244.0.0/16 via 10.0.1.6
+
+=================================================================================================================
+
+
+=================================================================================================================
+기타 실습
+=================================================================================================================
+기타 알아두어야 할 Bosh 명령어들
+bosh -e micro-bosh instances
+bosh -e micro-bosh env --details
+bosh -e micro-bosh stemcells
+bosh -e micro-bosh releases
+bosh -e micro-bosh tasks --recent
+bosh -e micro-bosh locks
+bosh -e micro-bosh cancel-task 123
+bosh -e micro-bosh -d paasta vms --vitals
+bosh -e micro-bosh -d paasta vms   
+bosh -e micro-bosh -d paasta ssh api
+
+cf-cli 설치
+wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+sudo apt update
+sudo apt install cf-cli
+cf -v
+
+cf login
+cf login -a https://api.10.244.0.34.nip.io --skip-ssl-validation 
+admin/admin
+
+user 생성
+cf create-user edu-user user
+
+org생성
+cf create-org edu-org
+cf orgs
+
+space
+cf create-space -o edu-org edu-spacecf 
+cf target -o edu-org -s edu-space  (아니면 cf target -o edu-org)
+cf spaces
+
+org role 설정
+cf set-org-role edu-user edu-org OrgManager
+
+space role 설정
+cf set-space-role edu-user edu-org edu-space SpaceDeveloper
+
+java8  설치
+sudo apt update
+sudo apt install openjdk-8-jdk
+java -version
+
+git 설치
+sudo apt install git
+git --version
+
+spring-music 다운로드 및 빌드
+cd ~/workspace
+git clone https://github.com/cloudfoundry-samples/spring-music
+cd spring-music/
+./gradlew clean assemble
+
+manifest 수정
+vi manifest.yml
+
+cf target 변경
+cf target -o edu-org -s edu-space
+
+spring-music 배포
+cf push
+cf apps
+
+로그 확인
+cf app spring-music
+cf logs spring-music
+cf logs spring-music --recent
+
+cf를 이용한 ssh 터널링
+cf ssh welcome-cf -L 9999:10.10.4.14:3306
+
+
+
+==========================================================
+3일차 교육에서  welcome-cf 다운로드 주소 변경
+==========================================================
+
+welcome-cf 다운로드 주소
+https://nextcloud.paas-ta.org/index.php/s/AesWfGRxqwgxNAE/download
