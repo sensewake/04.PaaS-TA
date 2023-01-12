@@ -6,6 +6,7 @@
 VMware Player 설치
 https://www.vmware.com/kr/products/workstation-player/workstation-player-evaluation.html
 여기에서 16.0. 버전을 다운로드 및 설치함
+: 20230110 17.0버전
 
 ubuntu 설치
 https://releases.ubuntu.com/18.04/
@@ -19,6 +20,7 @@ sudo apt upgrade
 ip 확인 
 ip a
 
+https://mobaxterm.mobatek.net/download-home-edition.html
 
 mobaxterm접속
 =================================================================================================================
@@ -52,24 +54,34 @@ sudo add-apt-repository "deb http://download.virtualbox.org/virtualbox/debian bi
 sudo apt update
 sudo apt install virtualbox-6.0
 VBoxManage --version 
-
+6.0.24r139119
 
 
 Deploy Bosh VM
-cd ~/workspace/paasta-deployment/bosh/
+cd ~/workspace/paasta-deployment/bosh/  => /home/ubuntu/workspace/paasta-deployment/bosh
 chmod 755 *.sh
-./deploy-bosh-lite.sh
+./deploy-bosh-lite.sh  
+: 15분정도 걸림 
+이게 마무리 되면 VMWare에 virtualbox아이콘이 생성된다.아이콘을 클릭하면 목록이 뜨는데 
+이때 업데이트를 하면안된다.
 
 
-credhub cli 설치
+credhub cli 설치: 인증정보저장하는 
 wget https://github.com/cloudfoundry-incubator/credhub-cli/releases/download/2.9.0/credhub-linux-2.9.0.tgz
 tar -xvf credhub-linux-2.9.0.tgz
 chmod +x credhub 
 sudo mv credhub /usr/local/bin/credhub 
 credhub --version
+>>Not Found 나오는 건 서버에 정보를 입력하지 않아서..?라고 함
+create-bosh-login.sh 하면 나온다네
 
-Bosh login 쉘 스크립트 생성
+Bosh login 쉘 스크립트 생성[~/workspace/paasta-deployment/bosh]
 ./create-bosh-login.sh
+:
+BOSH_DEPLOYMENT_PATH="~/workspace/paasta-deployment/bosh" # (e.g. ~/workspace/paasta-deployment/bosh)
+CURRENT_IAAS="bosh-lite"                                                # (e.g. aws/azure/gcp/openstack/vsphere/bosh-lite)
+BOSH_IP="10.0.1.6"                                              # (e.g. 10.0.1.6)
+정보들을 확인 해야함
 
 Bosh login 쉘 적용
 source ~/.env/micro-bosh-login-env
@@ -77,46 +89,95 @@ source ~/.env/micro-bosh-login-env
 Bosh login 확인
 bosh -e micro-bosh env
 
-jumpbox key 생성 (Bosh VM 로그인 용) 
+credhub find  : 파스타배포시에 필요한 인증정보들을 저장하게 된다.
+
+#jumpbox key 생성 (Bosh VM 로그인 용) 
 bosh int bosh-lite/creds.yml --path /jumpbox_ssh/private_key > jumpbox.key 
+#jumpbox.key 없으면 새로 생성 
 chmod 600 jumpbox.key
-ssh jumpbox@10.0.1.6 -i jumpbox.key
+ssh jumpbox@10.0.1.6 -i jumpbox.key 
+#jumpbox.key 를 이용해 보쉬로 로그인 하게 된다.? 시험에 자주 나온다.
+
 
 Bosh로 배포된 프로그램 process 확인 (bosh vm or paas-ta vm ssh 접속 후 이용)
 sudo su
 monit summary 
-
-vbox 환경저장
+VMWare 화면에서 버춸박스 우클릭 >닫기>상태저장 후에 종료해야한다.
+또는 터미널에서는 아래 명령어로 상태 저장 후 종료한다.
+#######
+vbox 환경저장: 컴퓨터를 닫을 때 버춸박스내의 환경저장을 해 주어야 정상적으로 배포된 보쉬를 사용할 수 있다.
 vboxmanage controlvm $(bosh int bosh-lite/state.json --path /current_vm_cid) savestate
+#######
+
+#boshvm 상태 확인하는 방법
+bosh -e micro-bosh env
  
 =================================================================================================================
 PaaS-TA 배포
 =================================================================================================================
- 
+
+ubuntu@ubuntu-virtual-machine:~/workspace/paasta-deployment/bosh 에서 실행
 Virtual Box vm 복구
 vboxmanage startvm $(bosh int bosh-lite/state.json --path /current_vm_cid) --type headless
 
-Bosh login
+Bosh login [ ~/workspace/paasta-deployment/bosh 에서 ] // vm복구 없이 로그인 하니 되네..
 source ~/.env/micro-bosh-login-env
 
-update cloud config
+## update cloud config
 cd ~/workspace/paasta-deployment/cloud-config
 cat bosh-lite-cloud-config.yml
+## update 확인하는 명령어
 bosh -e micro-bosh update-cloud-config bosh-lite-cloud-config.yml
 
-runtime config 등록
+## runtime config 등록
 cd ~/workspace/paasta-deployment/bosh
+vi update-runtime-config.sh 확인
 source update-runtime-config.sh
 bosh -e micro-bosh runtime-config
+#Bosh login 시에 source ~/.env/micro-bosh-login-env 를 사용하므로 
+#bosh runtime-config 이렇게 만 해도 같은 결과를 얻을 수 있다.
+## 런타임 컨피그와 보쉬컨피그를 한번에 확인할 수 있다
+bosh configs
+/**
+ubuntu@ubuntu-virtual-machine:~/workspace/paasta-deployment/bosh$ bosh configs
+Using environment '10.0.1.6' as client 'admin'
 
-stemcell 등록
+ID  Type     Name     Team  Created At
+1*  cloud    default  -     2023-01-10 15:00:12 UTC
+2*  runtime  default  -     2023-01-10 15:07:45 UTC
+3*  runtime  os-conf  -     2023-01-10 15:07:53 UTC
+
+(*) Currently active
+Only showing active configs. To see older versions use the --recent=10 option.
+
+3 configs
+
+Succeeded
+이렇게 3개가 올라가 있어야 파스타를 올릴 수 있다.
+*/
+
+
+>> stemcell 등록 github 가이드 확인 ?
 cd ~/workspace/paasta-deployment/bosh
+vi upload-stemcell.sh
+/**
+elif [[ ${CURRENT_IAAS} = "bosh-lite" ]]; then
+        bosh -e ${BOSH_ENVIRONMENT} upload-stemcell https://storage.googleapis.com/bosh-core-stemcells/${STEMCELL_VERSION}/bosh-stemcell-${STEMCELL_VERSION}-warden-boshlite-ubuntu-bionic-go_agent.tgz -n
+비부분이 bosh-lite 를 어디서 다운받아 사용하겠다는 부분임
+사이트내 가이드 참조
+*/
+## stemcell 등록:vm을 올리기 위한 이미지 파일등록
 source upload-stemcell.sh
 bosh -e micro-bosh stemcells
 
 PaaS-TA AP 설치 Variable File
 common_vars 수정
 vi ~/workspace/common/common_vars.yml
+
+echo $(bosh int ~/workspace/paasta-deployment/bosh/{iaas}/creds.yml --path /admin_password)
+echo $(bosh int ~/workspace/paasta-deployment/bosh/bosh-lite/creds.yml --path /admin_password)
+bosh-lite
+f8yrt1i277b7a7hyfnlj
 
 /paasta/vars.yml 수정 
 vi ~/workspace/paasta-deployment/paasta/vars.yml

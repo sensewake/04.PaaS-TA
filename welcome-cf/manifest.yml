@@ -1,0 +1,10 @@
+---
+applications:
+- name: welcome-cf
+  memory: 1024M
+  host: test-0811
+  path: ./target/welcome-cf.war
+  buildpack: java_buildpack
+env:
+  JAVA_OPTS: -Djava.security.egd=file:///dev/urandom
+  

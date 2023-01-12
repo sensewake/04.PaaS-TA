@@ -1,0 +1,41 @@
+
+
+bosh-lite  재 배포 
+
+(기존   bosh 삭제)
+ cd ~/workspace/paasta-deployment/bosh/
+./delete-deploy-bosh-lite.sh
+
+(bosh 재 배포)
+./deploy-bosh-lite.sh
+
+Bosh login
+source ~/.env/micro-bosh-login-env
+
+(bosh ssh 접속정보 변경 후 boshVM 접속 확인) 
+ssh-keygen -f ""/home/ubuntu/.ssh/known_hosts"" -R ""10.0.1.6""
+ssh jumpbox@10.0.1.6 -i jumpbox.key
+yes
+exit 로 나가기
+
+(update cloud config)  
+cd ~/workspace/paasta-deployment/cloud-config
+bosh -e micro-bosh update-cloud-config bosh-lite-cloud-config.yml
+
+(runtime config 등록)
+cd ~/workspace/paasta-deployment/bosh
+source update-runtime-config.sh
+
+(stemcell 등록)
+cd ~/workspace/paasta-deployment/bosh
+source upload-stemcell.sh
+
+(stemcell 확인)
+bosh stemcells
+(config 확인) 
+bosh configs
+
+
+PaaS-TA 배포
+cd ~/workspace/paasta-deployment/paasta
+./deploy-bosh-lite.sh
